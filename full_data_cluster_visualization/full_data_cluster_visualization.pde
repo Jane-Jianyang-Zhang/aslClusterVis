@@ -1,0 +1,535 @@
+import java.util.Arrays;
+import java.util.*;
+
+BufferedReader reader;
+String line;
+int counter;
+String [] features;
+final float threshold = 0;
+final int k = 3;
+final int loc_x = 1000;
+final int loc_y = 300;
+
+int buttonClicked = 0;
+PImage loc_color;
+Set<ClusterButton> buttons = new HashSet<ClusterButton>();
+
+Map<Integer, Set<String>> clusters = new TreeMap<Integer, Set<String>>();
+Map<String, Integer> assignment = new TreeMap<String, Integer>();
+Map<Integer, Set<Feature>> clusterToFeature = new TreeMap<Integer, Set<Feature>>();
+ArrayList<Sign> signs = new ArrayList<Sign>();
+Map<String, float[]> rawData = new TreeMap<String, float[]>();
+
+void setup() {
+
+  // set up of the screen
+  size(1800, 950);
+  background(255);
+  translate(10, height-10);
+  scale(1, 1);
+  stroke(0);
+
+  // This part read in the centeres for each cluster
+  readCenters();
+  System.out.println(clusterToFeature.toString());
+  System.out.println();
+
+  //This part read in the cluster assignemnt
+  readClusters();
+  System.out.println(clusters.toString());
+
+  //this part read the dimension reduction matrix reduced to 2 dimension
+  readDimRedData();
+
+ loc_color= loadImage("Archive/locations/locationOutlined.png");
+  // upload and display the image
+  // loadImage();
+}
+
+void draw() {
+
+  background(255);
+ 
+  plotSigns();
+  Set<String> names = new TreeSet<String>();
+  if (buttonClicked != 0) {
+    int size = clusters.get(buttonClicked).size();
+    text("size: " + size, 1300, 150);
+    showImage(buttonClicked);
+  }
+
+  for (ClusterButton button : buttons) {
+    switch (button.cluster) {
+    case 1:  
+      fill(93, 165, 218, 170);
+      break;
+    case 2:  
+      fill(241, 88, 84, 170);
+      break;
+    case 3:  
+      fill(250, 164, 58, 170);
+      break;
+    case 4:  
+      fill(96, 189, 104, 170);
+      break;
+    case 5:  
+      fill(241, 124, 176, 170);
+      break;
+    case 6:  
+      fill(0, 204, 204, 170);
+      break;
+    case 7:  
+      fill(77, 25, 25, 170);
+      break;
+    case 8:  
+      fill(153, 0, 204, 170);
+      break;
+    case 9:  
+      fill(0, 0, 153, 170);
+      break;
+    case 10:  
+      fill(179, 89, 0, 170);
+      break;
+    default: 
+      fill(0, 100, 0, 170);
+      break;
+    }
+    if (buttonClicked == button.cluster) {
+      stroke(0);
+    } else {
+      stroke(255, 255, 255, 100);
+    }
+    rect(button.position.x, button.position.y, 90, 55, 7);
+    fill(0, 0, 0);
+    text("C " + button.cluster, button.position.x + 22, button.position.y + 37);
+  }
+  // this part plot the signs colored by its clusters
+  for (int i=0; i<signs.size() - 1; i++) {
+    Sign sign = signs.get(i);
+    if (sign.cluster == buttonClicked || buttonClicked == 0 ) {
+      if (overCircle(sign.coordinates.x, sign.coordinates.y, 100 * sign.confidence)) {
+        fill(0, 0, 0);
+        text(sign.name, sign.coordinates.x, sign.coordinates.y - 20);
+        names.add(sign.name);
+      }
+    }
+  }
+  int y = 80;
+  for (String name : names) {
+    y += 30;
+    text(name, 1000, y);
+  }
+} 
+
+void mouseClicked() {
+  boolean clicked = false;
+  for (ClusterButton button : buttons) {
+    if (overButton(button)) {
+      clicked = true;  
+      buttonClicked = button.cluster;
+    }
+  }
+  if (clicked == false) {
+    buttonClicked = 0;
+  }
+}
+
+void showImage(int cluster) {
+  image(loc_color, loc_x, loc_y);
+  Set<Feature> features = clusterToFeature.get(cluster);
+  int i = 0;
+  int j = 0;
+  int y = 90;
+  int x = 1200;
+  String cur_type = "";
+  int count = 0;
+  for (Feature feature : features) {
+    float freq = feature.freq;
+    String name = feature.name;
+    if (name.equals("one hand") || name.equals("two hands")) {
+      text( name, 1450, 150);
+      text(freq, 1450, 180);
+    } else {
+      String feature_type = feature.type;
+      if (!cur_type.equals(feature_type)) {
+        cur_type = feature_type;
+        count = 0;
+        j+=1;
+        i = 0;
+      } else if (count > 4) {
+        continue;
+      } else {
+        i += 1;
+      }
+      count++;
+
+      if (feature_type.equals("hs")) {
+        feature_type = "handshapes";
+      } else if (feature_type.equals("loc")) {
+        feature_type = "locations";
+      } else if (feature_type.equals("mov") || feature_type.equals("relmov")) {
+        feature_type = "movements (including relative)";
+        name = "movements_" + name;
+      } else if (feature_type.equals("or")) {
+        feature_type = "orientations";
+        name = "orientations_" + name;
+      } else if (feature_type.equals("relpos")) {
+        feature_type = "relative positions";
+        name = "relations_" + name;
+      } else {
+        System.out.println(feature_type);
+      }
+      if (feature_type.equals("locations")) {
+        fill(255 - freq * 255, 255  -  freq * 100, 255, 170);
+        textSize(20);
+        if (name.equals("upperface")) {
+          displayLocation(loc_x + 121, loc_y + 29, 53, 24, freq, name);
+        } else if (name.equals("midface")) {
+          displayLocation(loc_x + 120, loc_y + 55, 57, 10, freq, name);
+        } else if (name.equals("sideface")) {
+          displayLocation(loc_x + 118, loc_y + 67, 59, 30, freq, name);
+        } else if (name.equals("lowerface")) {
+          displayLocation(loc_x + 121, loc_y + 91, 51, 15, freq, name);
+        } else if (name.equals("neck")) {
+          displayLocation(loc_x + 128, loc_y + 105, 49, 21, freq, name);
+        } else if (name.equals("trunk")) {
+          displayLocation(loc_x + 61, loc_y + 133, 171, 201, freq, name);
+        } else if (name.equals("upperarm")) {
+          displayLocation(loc_x + 220, loc_y + 168, 40, 84, freq, name);
+        } else if (name.equals("lowerarm")) {
+          displayLocation(loc_x + 219, loc_y + 264, 64, 76, freq, name);
+        } else if (name.equals("wristup")) {
+          displayLocation(loc_x + 22, loc_y + 181, 20, 13, freq, name);
+        } else if (name.equals("wristdown")) {
+          displayLocation(loc_x + 27, loc_y + 279, 20, 22, freq, name);
+        }
+        fill(0);
+        
+        text(name, 1355 + i * 80, j  * 150 + y + 20);
+        text(String.format("%.2f", freq) + "", 1355 + i * 80, j  * 150 + y);
+        textSize(28);
+      } else if ( !feature_type.equals("handshapes")  ) {
+        /*if (freq > 0.7) {
+         fill(250,128,114, 170);
+         } else if (freq > 0.4) {
+         fill(255,215,0, 170);
+         } else {
+         fill(96, 189, 104, 170);
+         }*/
+        fill(255 - freq * 255, 255  -  freq * 100, 255, 170);
+        rect(1350 + i * 80, j * 150 + y - freq * 70 - 10, 60, freq * 70);
+        fill(96, 189, 104, 170);
+        PImage img = loadImage("Archive/" + feature_type + "/" + name + ".jpg");
+
+        if (overRect(1350 + i * 80, j * 150 + y, img.width, img.height)) {
+          fill(0, 0, 0);
+          image(img, 1350 + i * 80 - 5, j * 150 + y - 5, img.width * 1.2, img.height * 1.2);
+
+          textSize(20);
+          text(name, 1355 + i * 80 - 40, j  * 150 + y + 100);
+          text(String.format("%.2f", freq) + "", 1355 + i * 80, j * 150 + y - freq * 70 - 12);
+          textSize(28);
+        } else {
+          image(img, 1350 + i * 80, j * 150 + y, img.width, img.height);
+        }
+      }
+    }
+  }
+}
+
+void displayLocation(int x, int y, int width, int height, float freq, String name) {
+  rect(x, y, width, height);
+  if (overRect(x, y, width, height)) {
+    textSize(28);
+  }
+}
+
+boolean overButton(ClusterButton button) {
+  return (mouseX > button.position.x && mouseX < button.position.x+90 && 
+    mouseY > button.position.y && mouseY < button.position.y+55);
+}
+
+boolean overRect(int x, int y, int width, int height) {
+  return (mouseX > x && mouseX < x+width && 
+    mouseY >y && mouseY < y+height);
+}
+
+boolean overCircle(float x, float y, float diameter) {
+  float disX = x - mouseX;
+  float disY = y - mouseY;
+  if (sqrt(sq(disX) + sq(disY)) < diameter/2 ) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+public void loadImages(String url, int x, int y) {
+}
+
+public void plotSigns() {
+  for (int i=0; i<signs.size() - 1; i++) {
+    Sign sign = signs.get(i);
+
+
+    switch (sign.cluster) {
+    case 1:  
+      fill(93, 165, 218, 170);
+      break;
+    case 2:  
+      fill(241, 88, 84, 170);
+      break;
+    case 3:  
+      fill(250, 164, 58, 170);
+      break;
+    case 4:  
+      fill(96, 189, 104, 170);
+      break;
+    case 5:  
+      fill(241, 124, 176, 170);
+      break;
+    case 6:  
+      fill(0, 204, 204, 170);
+      break;
+    case 7:  
+      fill(77, 25, 25, 170);
+      break;
+    case 8:  
+      fill(153, 0, 204, 170);
+      break;
+    case 9:  
+      fill(0, 0, 153, 170);
+      break;
+    case 10:  
+      fill(179, 89, 0, 170);
+      break;
+    default: 
+      fill(0, 100, 0, 170);
+      break;
+    }
+    textSize(28);
+    stroke(250, 250, 250);
+    if (sign.cluster == buttonClicked || buttonClicked == 0 ) {
+      ellipse(sign.coordinates.x, sign.coordinates.y, 100 * sign.confidence, 100 * sign.confidence);
+    }
+  }
+}
+
+// read the centers of the cluster
+public void readCenters() {
+  reader = createReader("/centers/full_data_center_" + k + ".tsv"); 
+  counter = 0;
+  do {
+    try {
+      line = reader.readLine();
+    } 
+    catch (IOException e) {
+      e.printStackTrace();
+      line = null;
+    }
+    if (line == null) {
+      // Stop reading because of an error or file is empty
+      noLoop();
+    } else {
+      String[] pieces = split(line, TAB);
+      if (counter == 0) {
+        features = pieces;
+        System.out.println(Arrays.toString(pieces));
+      } else {
+        int cluster = counter;
+        buttons.add(new ClusterButton(new PVector(1000 + cluster * 100, 50), cluster));
+        for (int i = 1; i < pieces.length -1; i++) {
+          float freq = Float.parseFloat(pieces[i]);
+          if (freq > threshold) {
+            String name = features[i - 1];
+            String new_name = "";
+            String type = "";
+            if (name.equals("\"numHands\"")) {
+              if (Float.parseFloat(pieces[i]) > 1.5) {
+                new_name = "two hands";
+              } else {
+                new_name = "one hand";
+              }
+            } else {
+              int pos = name.indexOf('_');
+              new_name = name.substring(pos + 1, name.length()-1);
+              type = name.substring(1, pos - 1);
+              if (type.equals("relpo")) {
+                type += "s";
+              } else if (type.equals("relmo")) {
+                type += "v";
+              }
+            }
+            Feature new_feature = new Feature(freq, new_name, type);
+            if (!clusterToFeature.containsKey(cluster)) {
+              clusterToFeature.put(cluster, new TreeSet<Feature>());
+            }
+            Set<Feature> featureSet = clusterToFeature.get(cluster);
+            featureSet.add(new_feature);
+            clusterToFeature.put(cluster, featureSet);
+          }
+        }
+      }
+      counter++;
+    }
+  } while (counter < k + 1);
+}
+
+// read the clusters assignment for each feature
+public void readClusters() {
+  reader = createReader("/cluster/sort_cluster_full_data_" + k + ".tsv"); 
+  counter = 0;
+  do {
+    try {
+      line = reader.readLine();
+    } 
+    catch (IOException e) {
+      e.printStackTrace();
+      line = null;
+    }
+    if (line == null) {
+      System.out.println("its not reading");
+      // Stop reading because of an error or file is empty
+      noLoop();
+    } else {
+      String[] pieces = split(line, TAB);
+      if (counter == 0) {
+      } else {
+
+        int cluster = Integer.parseInt(pieces[1]);
+        String sign = pieces[0];
+
+        assignment.put(sign, cluster);
+        if (!clusters.containsKey(cluster)) {
+          clusters.put(cluster, new TreeSet<String>());
+        }
+        Set<String> querySet = clusters.get(cluster);
+        querySet.add(sign);
+        clusters.put(cluster, querySet);
+      }
+      counter++;
+    }
+  } while (counter < 101);
+}
+
+// read dimention reduction matrix
+public void readDimRedData() {
+  reader = createReader("dim_red_full_data.tsv"); 
+  counter = 0;
+  do {
+    try {
+      line = reader.readLine();
+    } 
+    catch (IOException e) {
+      e.printStackTrace();
+      line = null;
+    }
+    if (line == null) {
+      // Stop reading because of an error or file is empty
+      noLoop();
+    } else {
+      String[] pieces = split(line, TAB);
+
+      if (counter == 0) {
+      } else {
+        String sign = pieces[0];
+        float x = Float.parseFloat(pieces[1]) * 14000 * 0.6 + 1250;
+        float y = Float.parseFloat(pieces[2]) * 2000  + 500;
+        PVector v = new PVector(x, y);
+
+        Sign newSign = new Sign(sign, v, assignment.get(sign));
+        signs.add(newSign);
+      }
+      counter++;
+    }
+  } while (counter < 101);
+  System.out.println();
+}
+
+public void readRawData() {
+  reader = createReader("raw_data.tsv"); 
+  counter = 0;
+  do {
+    try {
+      line = reader.readLine();
+    } 
+    catch (IOException e) {
+      e.printStackTrace();
+      line = null;
+    }
+    if (line == null) {
+      // Stop reading because of an error or file is empty
+      noLoop();
+    } else {
+      String[] pieces = split(line, TAB);
+
+      if (counter == 0) {
+      } else {
+        String sign = pieces[0];
+        float [] features = new float [pieces.length];
+        for (int i = 1; i < pieces.length -1; i++) {
+          features[i - 1] = Float.parseFloat(pieces[i]);
+        }
+        rawData.put(sign, features);
+      }
+    }
+    counter++;
+  } while (counter < 101);
+  System.out.println();
+  System.out.println(rawData);
+}
+
+
+class Sign {
+  public String name;
+  public PVector coordinates;
+  public int cluster;
+  public float confidence;
+
+  public Sign(String name, PVector coordinates, int cluster) {
+    this.name = name;
+    this.coordinates = coordinates;
+    this.cluster = cluster;
+    this.confidence = random(0.2, 0.6);
+  }
+}
+
+class Feature implements Comparable<Feature> {
+  public float freq;
+  public String name;
+  public String type;
+
+  public Feature (float freq, String name, String type) {
+    this.freq = freq;
+    this.name = name;
+    this.type = type;
+  }
+
+  public String toString() {
+    return "[" + name + ", " + freq + ", " + type +"]";
+  }
+
+  public int compareTo(Feature compareFeature) {
+    float that_freq= ((Feature) compareFeature).freq; 
+    String that_type = ((Feature) compareFeature).type;
+    if (that_type.compareTo(this.type) == 0) {
+      if (that_freq - this.freq > 0) {
+        return 1;
+      } else {
+        return -1;
+      }
+    } else {
+      return that_type.compareTo(this.type);
+    }
+  }
+}
+
+class ClusterButton {
+  public PVector position;
+  public int cluster;
+
+  public ClusterButton (PVector position, int cluster) {
+    this.position = position;
+    this.cluster = cluster;
+  }
+}
