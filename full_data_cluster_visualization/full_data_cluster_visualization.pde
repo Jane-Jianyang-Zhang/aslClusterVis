@@ -1,19 +1,23 @@
 import java.util.Arrays;
 import java.util.*;
+import processing.video.*;
 
 BufferedReader reader;
 String line;
 int counter;
 String [] features;
 final float threshold = 0;
-final int k = 3;
+final int k = 2;
 final int loc_x = 1000;
 final int loc_y = 300;
+
+Movie test;
 
 int buttonClicked = 0;
 PImage loc_color;
 Set<ClusterButton> buttons = new HashSet<ClusterButton>();
 
+Set<String> names = new TreeSet<String>();
 Map<Integer, Set<String>> clusters = new TreeMap<Integer, Set<String>>();
 Map<String, Integer> assignment = new TreeMap<String, Integer>();
 Map<Integer, Set<Feature>> clusterToFeature = new TreeMap<Integer, Set<Feature>>();
@@ -23,7 +27,7 @@ Map<String, float[]> rawData = new TreeMap<String, float[]>();
 void setup() {
 
   // set up of the screen
-  size(1800, 950);
+  size(1800, 1200);
   background(255);
   translate(10, height-10);
   scale(1, 1);
@@ -41,19 +45,18 @@ void setup() {
   //this part read the dimension reduction matrix reduced to 2 dimension
   readDimRedData();
 
- loc_color= loadImage("Archive/locations/locationOutlined.png");
-  // upload and display the image
-  // loadImage();
+  loc_color= loadImage("Archive/locations/locationOutlined.png");
 }
 
 void draw() {
 
   background(255);
- 
+  names.clear();
   plotSigns();
-  Set<String> names = new TreeSet<String>();
+
   if (buttonClicked != 0) {
     int size = clusters.get(buttonClicked).size();
+    fill(0);
     text("size: " + size, 1300, 150);
     showImage(buttonClicked);
   }
@@ -103,23 +106,23 @@ void draw() {
     fill(0, 0, 0);
     text("C " + button.cluster, button.position.x + 22, button.position.y + 37);
   }
-  // this part plot the signs colored by its clusters
-  for (int i=0; i<signs.size() - 1; i++) {
-    Sign sign = signs.get(i);
-    if (sign.cluster == buttonClicked || buttonClicked == 0 ) {
-      if (overCircle(sign.coordinates.x, sign.coordinates.y, 100 * sign.confidence)) {
-        fill(0, 0, 0);
-        text(sign.name, sign.coordinates.x, sign.coordinates.y - 20);
-        names.add(sign.name);
-      }
-    }
-  }
+
   int y = 80;
   for (String name : names) {
     y += 30;
     text(name, 1000, y);
   }
 } 
+
+void movieEvent(Movie m) {
+  m.read();
+}
+
+void loadVideo(String name) {
+  test = new Movie(this, "C:/Users/zjy/Documents/Processing/aslClusterVis/full_data_cluster_visualization/videos/mp4/" + name.substring(1, name.length() - 1) + ".mp4");
+  test.loop();
+  image(test, 1000, 500, test.width, test.height);
+}
 
 void mouseClicked() {
   boolean clicked = false;
@@ -139,7 +142,7 @@ void showImage(int cluster) {
   Set<Feature> features = clusterToFeature.get(cluster);
   int i = 0;
   int j = 0;
-  int y = 90;
+  int y = 100;
   int x = 1200;
   String cur_type = "";
   int count = 0;
@@ -147,6 +150,7 @@ void showImage(int cluster) {
     float freq = feature.freq;
     String name = feature.name;
     if (name.equals("one hand") || name.equals("two hands")) {
+      fill(0);
       text( name, 1450, 150);
       text(freq, 1450, 180);
     } else {
@@ -156,16 +160,19 @@ void showImage(int cluster) {
         count = 0;
         j+=1;
         i = 0;
+        if (feature_type.equals("loc")) {
+          j--;
+        }
       } else if (count > 4) {
         continue;
       } else {
         i += 1;
       }
       count++;
-
       if (feature_type.equals("hs")) {
         feature_type = "handshapes";
       } else if (feature_type.equals("loc")) {
+        System.out.println("loc");
         feature_type = "locations";
       } else if (feature_type.equals("mov") || feature_type.equals("relmov")) {
         feature_type = "movements (including relative)";
@@ -193,7 +200,7 @@ void showImage(int cluster) {
         } else if (name.equals("neck")) {
           displayLocation(loc_x + 128, loc_y + 105, 49, 21, freq, name);
         } else if (name.equals("trunk")) {
-          displayLocation(loc_x + 61, loc_y + 133, 171, 201, freq, name);
+          displayLocation(loc_x + 71, loc_y + 143, 161, 191, freq, name);
         } else if (name.equals("upperarm")) {
           displayLocation(loc_x + 220, loc_y + 168, 40, 84, freq, name);
         } else if (name.equals("lowerarm")) {
@@ -204,11 +211,23 @@ void showImage(int cluster) {
           displayLocation(loc_x + 27, loc_y + 279, 20, 22, freq, name);
         }
         fill(0);
-        
-        text(name, 1355 + i * 80, j  * 150 + y + 20);
-        text(String.format("%.2f", freq) + "", 1355 + i * 80, j  * 150 + y);
+
+        text(name, 1000 + (i % 3)* 120, 700 + (i / 3) * 60);
+        text(String.format("%.2f", freq) + "",  1000 + (i % 3) * 120, 730 + (i / 3) * 60);
         textSize(28);
-      } else if ( !feature_type.equals("handshapes")  ) {
+      } else {
+        PImage img;
+        if (feature_type.equals("handshapes")  ) {
+          int underscore = name.indexOf('_');
+          if (underscore != -1) {
+            name = name.substring(0, 1).toUpperCase() + name.substring(1, name.length() - 1) + name.substring(name.length()-1).toUpperCase();
+          } else {
+            name = name.toUpperCase();
+          }
+          img = loadImage("Archive/" + feature_type + "/" + name + ".JPG");
+        } else {
+          img = loadImage("Archive/" + feature_type + "/" + name + ".jpg");
+        }
         /*if (freq > 0.7) {
          fill(250,128,114, 170);
          } else if (freq > 0.4) {
@@ -217,20 +236,33 @@ void showImage(int cluster) {
          fill(96, 189, 104, 170);
          }*/
         fill(255 - freq * 255, 255  -  freq * 100, 255, 170);
-        rect(1350 + i * 80, j * 150 + y - freq * 70 - 10, 60, freq * 70);
+        rect(1350 + i * 80, j * 140 + y - freq * 70 - 10, 60, freq * 70);
+
+
         fill(96, 189, 104, 170);
-        PImage img = loadImage("Archive/" + feature_type + "/" + name + ".jpg");
 
-        if (overRect(1350 + i * 80, j * 150 + y, img.width, img.height)) {
-          fill(0, 0, 0);
-          image(img, 1350 + i * 80 - 5, j * 150 + y - 5, img.width * 1.2, img.height * 1.2);
-
-          textSize(20);
-          text(name, 1355 + i * 80 - 40, j  * 150 + y + 100);
-          text(String.format("%.2f", freq) + "", 1355 + i * 80, j * 150 + y - freq * 70 - 12);
-          textSize(28);
+        if (feature_type.equals("handshapes")) {
+          if (overRect(1350 + i * 80, j * 140 + y, img.width * 1/3, img.height * 1/3)) {
+            fill(0, 0, 0);
+            textSize(20);
+            text(feature_type + "_" + name, 1355 + i * 80 - 40, j  * 140 + y + 100);
+            text(String.format("%.2f", freq) + "", 1355 + i * 80, j * 140 + y - freq * 70 - 12);
+            textSize(28);
+            image(img, 1350 + i * 80, j * 140 + y, img.width * 0.35, img.height * 0.35);
+          } else {
+            image(img, 1350 + i * 80, j * 140 + y, img.width * 1/3, img.height *1/3);
+          }
         } else {
-          image(img, 1350 + i * 80, j * 150 + y, img.width, img.height);
+          if (overRect(1350 + i * 80, j * 140 + y, img.width, img.height)) {
+            fill(0, 0, 0);
+            image(img, 1350 + i * 80 - 5, j * 140 + y - 5, img.width * 1.2, img.height * 1.2);
+            textSize(20);
+            text(name, 1355 + i * 80 - 40, j  * 140 + y + 100);
+            text(String.format("%.2f", freq) + "", 1355 + i * 80, j * 140 + y - freq * 70 - 12);
+            textSize(28);
+          } else {
+            image(img, 1350 + i * 80, j * 140 + y, img.width, img.height);
+          }
         }
       }
     }
@@ -311,6 +343,11 @@ public void plotSigns() {
     stroke(250, 250, 250);
     if (sign.cluster == buttonClicked || buttonClicked == 0 ) {
       ellipse(sign.coordinates.x, sign.coordinates.y, 100 * sign.confidence, 100 * sign.confidence);
+      if (overCircle(sign.coordinates.x, sign.coordinates.y, 100 * sign.confidence)) {
+        fill(0, 0, 0);
+        text(sign.name, sign.coordinates.x, sign.coordinates.y - 20);
+        names.add(sign.name);
+      }
     }
   }
 }
